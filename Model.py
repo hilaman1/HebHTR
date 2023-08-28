@@ -1,6 +1,7 @@
 import numpy as np
-import tensorflow as tf
-
+import os
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 '''
 Handwritten text recognition model written by Harald Scheidl:
 https://github.com/githubharald/SimpleHTR
@@ -27,10 +28,10 @@ class Model:
 
         # Whether to use normalization over a batch or a population
         self.is_train = tf.placeholder(tf.bool, name='is_train')
-
         # input image batch
         self.inputImgs = tf.placeholder(tf.float32, shape=(
         None, Model.imgSize[0], Model.imgSize[1]))
+
 
         # setup CNN, RNN and CTC
         self.setupCNN()
@@ -80,11 +81,11 @@ class Model:
         # basic cells which is used to build RNN
         numHidden = 256
         cells = [
-            tf.contrib.rnn.LSTMCell(num_units=numHidden, state_is_tuple=True)
+            tf.nn.rnn_cell.LSTMCell(num_units=numHidden, state_is_tuple=True)
             for _ in range(2)]  # 2 layers
 
         # stack basic cells
-        stacked = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)
+        stacked = tf.nn.rnn_cell.MultiRNNCell(cells, state_is_tuple=True)
 
         # bidirectional RNN
         # BxTxF -> BxTx2H
@@ -134,7 +135,10 @@ class Model:
                                                     sequence_length=self.seqLen)
         elif self.decoderType == DecoderType.WordBeamSearch:
             # import compiled word beam search operation (see https://github.com/githubharald/CTCWordBeamSearch)
-            word_beam_search_module = tf.load_op_library('./TFWordBeamSearch.so')
+            # add to current cwd HebHTR folder
+            current_dir = os.getcwd()
+            globals()[current_dir] = current_dir
+            word_beam_search_module = tf.load_op_library(fr'{current_dir}/TFWordBeamSearch.so')
 
             # prepare information about language (dictionary, characters in dataset, characters forming words)
             chars = str().join(self.charList)

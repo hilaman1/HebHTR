@@ -117,6 +117,8 @@ Result:
   - TensorFlow 1.12.0 
   - Numpy 16.4
   - OpenCV
+  - pdf2image 1.16.3
+
     
 ## References
 [1] [Harald Scheid's SimpleHTR model](https://towardsdatascience.com/build-a-handwritten-text-recognition-system-using-tensorflow-2326a3487cd5)\
