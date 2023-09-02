@@ -4,7 +4,7 @@ import re
 from matplotlib import pyplot as plt
 
 regex = r'^[.,/"=+_?!*%~\'{}\[\]:().,;]+$'
-path = r'C:\Users\Gal\Source\Repos\NLP\HebHTR\data'
+path = r'..\HebHTR\data'
 
 # Resize image to fit model's input size, and place it on model's size empty image.
 def preprocessImageForPrediction(img, imgSize):
