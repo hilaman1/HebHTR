@@ -1,10 +1,20 @@
 import numpy as np
-import tensorflow as tf
+import os
+from io import StringIO
+import sys
+from typing import List, Tuple
+import tensorflow.compat.v1 as tf
+from word_beam_search import WordBeamSearch
+
+tf.disable_v2_behavior()
+# disable eager mode
+# tf.compat.v1.disable_eager_execution()
 
 '''
 Handwritten text recognition model written by Harald Scheidl:
 https://github.com/githubharald/SimpleHTR
 '''
+
 
 class DecoderType:
     BestPath = 0
@@ -14,11 +24,16 @@ class DecoderType:
 class Model:
     # model constants
     batchSize = 50
-    imgSize = (128, 32)
+    imgSize = (128, 32) #desired image size
     maxTextLen = 32
 
     def __init__(self, charList, decoderType=DecoderType.BestPath,
                  mustRestore=False, dump=False):
+        self.rnnOut3d = None
+        self.gtTexts = None
+        self.ctcIn3dTBC = None
+        self.wbs_input = None
+        self.decoder = None
         self.dump = dump
         self.charList = charList
         self.decoderType = decoderType
@@ -27,10 +42,9 @@ class Model:
 
         # Whether to use normalization over a batch or a population
         self.is_train = tf.placeholder(tf.bool, name='is_train')
-
         # input image batch
         self.inputImgs = tf.placeholder(tf.float32, shape=(
-        None, Model.imgSize[0], Model.imgSize[1]))
+            None, Model.imgSize[0], Model.imgSize[1]))
 
         # setup CNN, RNN and CTC
         self.setupCNN()
@@ -63,9 +77,9 @@ class Model:
             kernel = tf.Variable(tf.truncated_normal(
                 [kernelVals[i], kernelVals[i], featureVals[i],
                  featureVals[i + 1]], stddev=0.1))
-            conv = tf.nn.conv2d(pool, kernel, padding='SAME',
+            conv = tf.nn.conv2d(input=pool, filters=kernel, padding='SAME',
                                 strides=(1, 1, 1, 1))
-            conv_norm = tf.layers.batch_normalization(conv,
+            conv_norm = tf.compat.v1.layers.batch_normalization(conv,
                                                       training=self.is_train)
             relu = tf.nn.relu(conv_norm)
             pool = tf.nn.max_pool(relu, (1, poolVals[i][0], poolVals[i][1], 1),
@@ -80,11 +94,11 @@ class Model:
         # basic cells which is used to build RNN
         numHidden = 256
         cells = [
-            tf.contrib.rnn.LSTMCell(num_units=numHidden, state_is_tuple=True)
+            tf.nn.rnn_cell.LSTMCell(num_units=numHidden, state_is_tuple=True)
             for _ in range(2)]  # 2 layers
 
         # stack basic cells
-        stacked = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)
+        stacked = tf.nn.rnn_cell.MultiRNNCell(cells, state_is_tuple=True)
 
         # bidirectional RNN
         # BxTxF -> BxTx2H
@@ -106,7 +120,7 @@ class Model:
 
     def setupCTC(self):
         # BxTxC -> TxBxC
-        self.ctcIn3dTBC = tf.transpose(self.rnnOut3d, [1, 0, 2])
+        self.ctcIn3dTBC = tf.transpose(a=self.rnnOut3d, perm=[1, 0, 2])
         # ground truth text as sparse tensor
         self.gtTexts = tf.SparseTensor(
             tf.placeholder(tf.int64, shape=[None, 2]),
@@ -134,8 +148,12 @@ class Model:
                                                     sequence_length=self.seqLen)
         elif self.decoderType == DecoderType.WordBeamSearch:
             # import compiled word beam search operation (see https://github.com/githubharald/CTCWordBeamSearch)
-            word_beam_search_module = tf.load_op_library('./TFWordBeamSearch.so')
-
+            # add to current cwd HebHTR folder
+            current_dir = os.getcwd()
+            globals()[current_dir] = current_dir
+            # word_beam_search_module = tf.load_op_library(fr'{current_dir}/TFWordBeamSearch.so')
+            # word_beam_search_module = tf.load_op_library('./TFWordBeamSearch.so')
+            # word_beam_search.cp310-win_amd64.pyd
             # prepare information about language (dictionary, characters in dataset, characters forming words)
             chars = str().join(self.charList)
 
@@ -143,20 +161,25 @@ class Model:
                 byte = f.read(1)
                 if byte != "":
                     byte = f.read()
-                    myString = byte.decode("Windows-1255")
+                    myString = byte.decode("utf8")
                     wordChars = myString.splitlines()[0]
-
-
-            corpus = open('data/corpus.txt').read()
+            corpus = open('data/corpus.txt', encoding="utf8").read()
+            # with open('data/corpus_old.txt', 'r', encoding='utf-8') as file:
+            #     corpus = file.read()
 
             # decode using the "Words" mode of word beam search
-            self.decoder = word_beam_search_module.word_beam_search(
-                tf.nn.softmax(self.ctcIn3dTBC, axis=2), 50, 'Words', 0.0,
-                corpus.encode('utf8'), chars.encode('utf8'),
-                wordChars.encode('utf8'))
+
+            self.decoder = WordBeamSearch(50, 'Words', 0.0,
+                                          corpus.encode('utf8'), chars.encode('utf8'),
+                                          wordChars.encode('utf8'))
+            # the input to the decoder must have softmax already applied
+            self.wbs_input = tf.nn.softmax(self.ctcIn3dTBC, axis=2)
 
     def setupTF(self):
-        sess = tf.Session()  # TF session
+        # TF session
+        sess = tf.compat.v1.Session()
+        # sess.run(tf.compat.v1.global_variables_initializer())
+        # sess = tf.Session()  # TF session
 
         saver = tf.train.Saver(max_to_keep=1)  # saver saves model to file
         modelDir = 'model/'
@@ -195,6 +218,7 @@ class Model:
         return (indices, values, shape)
 
     def decoderOutputToText(self, ctcOutput, batchSize):
+        """Extract texts from output of CTC decoder."""
         # contains string of labels for each batch element
         encodedLabelStrs = [[] for i in range(batchSize)]
 
@@ -216,6 +240,7 @@ class Model:
             idxDict = {b: [] for b in range(batchSize)}
             for (idx, idx2d) in enumerate(decoded.indices):
                 label = decoded.values[idx]
+                print("current label is ", label )
                 batchElement = idx2d[0]  # index according to [b,t]
                 encodedLabelStrs[batchElement].append(label)
 
@@ -226,15 +251,33 @@ class Model:
     def inferBatch(self, batch, calcProbability=False, probabilityOfGT=False):
         # decode, optionally save RNN output
         numBatchElements = len(batch.imgs)
-        evalRnnOutput = self.dump or calcProbability
-        evalList = [self.decoder] + ([self.ctcIn3dTBC] if evalRnnOutput else [])
+
+        # put tensors to be evaluated into list
+        evalList = []
+
+        if self.decoderType == DecoderType.WordBeamSearch:
+            evalList.append(self.wbs_input)
+        else:
+            evalList.append(self.decoder)
+
+        if self.dump or calcProbability:
+            evalList.append(self.ctcIn3dTBC)
+        # evalRnnOutput = self.dump or calcProbability
+        # evalList = [self.decoder] + ([self.ctcIn3dTBC] if evalRnnOutput else [])
         feedDict = {self.inputImgs: batch.imgs,
                     self.seqLen: [Model.maxTextLen] * numBatchElements,
                     self.is_train: False}
         evalRes = self.sess.run(evalList, feedDict)
-        decoded = evalRes[0]
-        texts = self.decoderOutputToText(decoded, numBatchElements)
+        #decoded = evalRes[0]
+        # TF decoders: decoding already done in TF graph
+        if self.decoderType != DecoderType.WordBeamSearch:
+            decoded = evalRes[0]
+        # word beam search decoder: decoding is done in C++ function compute()
+        else:
+            decoded = self.decoder.compute(evalRes[0])
 
+        texts = self.decoderOutputToText(decoded, numBatchElements)
+        print(texts)
         # feed RNN output and recognized text into CTC loss to compute labeling probability
         probs = None
         if calcProbability:
@@ -248,4 +291,13 @@ class Model:
             lossVals = self.sess.run(evalList, feedDict)
             probs = np.exp(-lossVals)
 
-        return (texts, probs)
+            # dump the output of the NN to CSV file(s)
+            if self.dump:
+                self.dump_nn_output(evalRes[1])
+
+            return (texts, probs)
+
+    def save(self) -> None:
+        """Save model to file."""
+        self.snap_ID += 1
+        self.saver.save(self.sess, '../model/snapshot', global_step=self.snap_ID)
