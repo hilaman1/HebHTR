@@ -173,7 +173,7 @@ class Model:
                     # "NGrams": use dictionary and score beams with LM: O(log(W))
                     # "NGramsForecast": forecast (possible) next words and apply LM to these words: O(W*log(W))
                     # "NGramsForecastAndSample": restrict number of (possible) next words to at most 20 words: O(W)
-            self.decoder = WordBeamSearch(50, 'NGramsForecast', 0.00,
+            self.decoder = WordBeamSearch(50, 'Words', 0.00,
                                           corpus.encode('utf8'), chars.encode('utf8'),
                                           wordChars.encode('utf8'))
             # the input to the decoder must have softmax already applied

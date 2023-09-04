@@ -6,7 +6,7 @@ import numpy as np
 
 
 # TODO - change the path to the project path
-project_path = r'C:\Users\hillu\OneDrive\מסמכים\nlp\final_project'
+project_path = r'C:\Users\Gal\Source\Repos\NLP\HebHTR'
 data_path = fr'{project_path}\data'
 questionnaires_pdf_dir_path = fr'{data_path}\questionnaires_pdf'
 questionnaires_jpg_dir_path = fr'{data_path}\questionnaires_jpg'
@@ -94,7 +94,7 @@ def line_segmentation(image_path, image_line_segmentation_dir_path, theshold):
 #     show the first line of the image
     line = img[first_row:second_row, :]
     plt.imshow(line, cmap='gray')
-    plt.show()
+    #plt.show()
 #     save the first line of the image
     plt.imsave(fr'{image_line_segmentation_dir_path}\line_{line_number}.jpg', line, cmap='gray')
 #     crop the first line from the image
@@ -104,6 +104,10 @@ def line_segmentation(image_path, image_line_segmentation_dir_path, theshold):
         line_number += 1
         # get the sum of the pixels in each row
         sum_of_pixels = np.sum(img, axis=1)
+        new_first_row = np.where(sum_of_pixels != 0)
+        if not new_first_row[0].any():
+            # new_first_row is empty, finished extracting lines
+            break
         # get the index of the next row that the sum of the pixels is not zero
         first_row = np.where(sum_of_pixels != 0)[0][0]
         # check if the sum is bigger than theshold
@@ -112,7 +116,7 @@ def line_segmentation(image_path, image_line_segmentation_dir_path, theshold):
         # show the next line of the image
         line = img[first_row:second_row, :]
         plt.imshow(line, cmap='gray')
-        plt.show()
+        #plt.show()
         if sum_of_pixels[first_row] > theshold:
             # save the next line of the image
             plt.imsave(fr'{image_line_segmentation_dir_path}\line_{line_number}.jpg', line, cmap='gray')
@@ -144,16 +148,9 @@ def character_segmentation(line_path, character_path, line_number):
         character = cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 1)
         character = character[y:y + h, x:x + w]
         plt.imshow(character, cmap='gray')
-        plt.show()
+        #plt.show()
         plt.imsave(fr'{character_path}\line_{line_number}_char_{char_num}.jpg', character, cmap='gray')
         char_num += 1
-
-
-
-
-
-
-
 
 def main():
     convert_to_jpg_flag = True
@@ -172,22 +169,20 @@ def main():
                 if not os.path.exists(image_line_segmentation_dir_path):
                     os.mkdir(image_line_segmentation_dir_path)
                 image_path = fr'{questionnaire_dir_path}\{image}'
-                # clean_image(image_path)
-                # line_segmentation(image_path, image_line_segmentation_dir_path, theshold=2)
+                clean_image(image_path)
+                line_segmentation(image_path, image_line_segmentation_dir_path, theshold=2)
 #                character segmentation
 #                 check if character segmentation folder for this image exists
-                character_path = fr'{image_line_segmentation_dir_path}\character_segmentation'
-                if not os.path.exists(character_path):
-                    os.mkdir(character_path)
-                line_number = 1
-                for line in os.listdir(image_line_segmentation_dir_path):
+                #character_path = fr'{image_line_segmentation_dir_path}\character_segmentation'
+                #if not os.path.exists(character_path):
+                #    os.mkdir(character_path)
+                #line_number = 1
+                #for line in os.listdir(image_line_segmentation_dir_path):
                     # if line is a folder skip
-                    if os.path.isdir(fr'{image_line_segmentation_dir_path}\{line}'):
-                        continue
-                    line_path = fr'{image_line_segmentation_dir_path}\{line}'
-                    character_segmentation(line_path, character_path, line_number)
-                    line_number += 1
-
-
+                #    if os.path.isdir(fr'{image_line_segmentation_dir_path}\{line}'):
+                #        continue
+                #    line_path = fr'{image_line_segmentation_dir_path}\{line}'
+                #    character_segmentation(line_path, character_path, line_number)
+                #    line_number += 1
 
 main()
