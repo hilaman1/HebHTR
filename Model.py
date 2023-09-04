@@ -28,7 +28,7 @@ class Model:
     maxTextLen = 32
 
     def __init__(self, charList, decoderType=DecoderType.BestPath,
-                 mustRestore=False, dump=False):
+                 mustRestore = False, dump=False):
         self.rnnOut3d = None
         self.gtTexts = None
         self.ctcIn3dTBC = None
@@ -167,9 +167,13 @@ class Model:
             # with open('data/corpus_old.txt', 'r', encoding='utf-8') as file:
             #     corpus = file.read()
 
-            # decode using the "Words" mode of word beam search
-
-            self.decoder = WordBeamSearch(50, 'Words', 0.0,
+            # decode using the "Words" mode of word beam search.
+                #as for arg2 of WordBeamSearch:
+                    # "Words": only use dictionary, no scoring: O(1)
+                    # "NGrams": use dictionary and score beams with LM: O(log(W))
+                    # "NGramsForecast": forecast (possible) next words and apply LM to these words: O(W*log(W))
+                    # "NGramsForecastAndSample": restrict number of (possible) next words to at most 20 words: O(W)
+            self.decoder = WordBeamSearch(50, 'NGramsForecast', 0.00,
                                           corpus.encode('utf8'), chars.encode('utf8'),
                                           wordChars.encode('utf8'))
             # the input to the decoder must have softmax already applied
@@ -217,6 +221,27 @@ class Model:
 
         return (indices, values, shape)
 
+    @staticmethod
+    def dump_nn_output(rnn_output: np.ndarray) -> None:
+        """Dump the output of the NN to CSV file(s)."""
+        current_dir = os.getcwd()
+        dump_dir = fr'{current_dir}/dump/'
+        if not os.path.isdir(dump_dir):
+            os.mkdir(dump_dir)
+
+        # iterate over all batch elements and create a CSV file for each one
+        max_t, max_b, max_c = rnn_output.shape
+        for b in range(max_b):
+            csv = ''
+            for t in range(max_t):
+                for c in range(max_c):
+                    csv += str(rnn_output[t, b, c]) + ';'
+                csv += '\n'
+            fn = dump_dir + 'rnnOutput_' + str(b) + '.csv'
+            print('Write dump of NN to file: ' + fn)
+            with open(fn, 'w') as f:
+                f.write(csv)
+
     def decoderOutputToText(self, ctcOutput, batchSize):
         """Extract texts from output of CTC decoder."""
         # contains string of labels for each batch element
@@ -248,7 +273,7 @@ class Model:
         return [str().join([self.charList[c] for c in labelStr]) for labelStr in
                 encodedLabelStrs]
 
-    def inferBatch(self, batch, calcProbability=False, probabilityOfGT=False):
+    def inferBatch(self, batch, calcProbability=True, probabilityOfGT=False):
         # decode, optionally save RNN output
         numBatchElements = len(batch.imgs)
 
@@ -260,7 +285,7 @@ class Model:
         else:
             evalList.append(self.decoder)
 
-        if self.dump or calcProbability:
+        if self.dump_nn_output or calcProbability:
             evalList.append(self.ctcIn3dTBC)
         # evalRnnOutput = self.dump or calcProbability
         # evalList = [self.decoder] + ([self.ctcIn3dTBC] if evalRnnOutput else [])
@@ -269,6 +294,7 @@ class Model:
                     self.is_train: False}
         evalRes = self.sess.run(evalList, feedDict)
         #decoded = evalRes[0]
+
         # TF decoders: decoding already done in TF graph
         if self.decoderType != DecoderType.WordBeamSearch:
             decoded = evalRes[0]
@@ -277,10 +303,12 @@ class Model:
             decoded = self.decoder.compute(evalRes[0])
 
         texts = self.decoderOutputToText(decoded, numBatchElements)
+        #texts_second_best =
+        #texts_third_best =
         print(texts)
         # feed RNN output and recognized text into CTC loss to compute labeling probability
         probs = None
-        if calcProbability:
+        if calcProbability: #TODO- from the paper- the probability of seeing the beam-labeling at the current timestep is calculated
             sparse = self.toSparse(
                 batch.gtTexts) if probabilityOfGT else self.toSparse(texts)
             ctcInput = evalRes[1]
@@ -290,14 +318,13 @@ class Model:
                         self.is_train: False}
             lossVals = self.sess.run(evalList, feedDict)
             probs = np.exp(-lossVals)
+            print(probs)
 
             # dump the output of the NN to CSV file(s)
             if self.dump:
                 self.dump_nn_output(evalRes[1])
 
-            return texts, probs
-
-        return (texts, probs)
+            return (texts, probs)
 
     def save(self) -> None:
         """Save model to file."""

@@ -16,20 +16,20 @@ class FilePaths:
 
 def infer(model, image):
     img = preprocessImageForPrediction(image, Model.imgSize)
-    print("in infer, img shape",img.shape)
+    #print("in infer, img shape",img.shape)
     batch = Batch(None, [img])
     recognized = model.inferBatch(batch, True)[0]
     return recognized
 
 
-def getModel(decoder_type):
+def getModel(decoder_type, mustRestore, dump):
     if decoder_type == 'word_beam':
         decoderType = DecoderType.WordBeamSearch
     else:
         decoderType = DecoderType.BestPath
 
     model = Model(open(FilePaths.fnCharList, encoding="utf8").read(), decoderType,
-                  mustRestore=True)
+                  mustRestore,dump)
     return model
 
 

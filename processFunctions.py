@@ -4,11 +4,11 @@ import re
 from matplotlib import pyplot as plt
 
 regex = r'^[.,/"=+_?!*%~\'{}\[\]:().,;]+$'
-path = r'C:\Users\Gal\Source\Repos\NLP\HebHTR\data'
+path = r'\HebHTR\data' #TODO- change it to your desired path to see changes in the proccessed img (lines 30-31)
 
 # Resize image to fit model's input size, and place it on model's size empty image.
 def preprocessImageForPrediction(img, imgSize):
-    # Read the gray-value image
+    #invert the img to white background and black text
     img = cv2.bitwise_not(img)
     grayscale_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     #cv2.imshow('grayscale_image', grayscale_image)
@@ -27,8 +27,8 @@ def preprocessImageForPrediction(img, imgSize):
     #cv2.imshow('grayscale_image', img)
     print("in preprocessImageForPrediction after resize", img.shape)
     target = np.ones([ht, wt]) * 255
-    cv2.imwrite(fr'{path}\target.png', target)
-    c = cv2.imread(fr'{path}\target.png', 1)
+    #cv2.imwrite(fr'{path}\target.png', target)
+    #c = cv2.imread(fr'{path}\target.png', 1)
     #cv2.imshow('target', c)
     # map image into target image
     target[0:newSize[1], 0:newSize[0]] = img
