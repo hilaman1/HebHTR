@@ -24,11 +24,11 @@ class DecoderType:
 class Model:
     # model constants
     batchSize = 50
-    imgSize = (128, 32) #desired image size
+    imgSize = (128, 32)  # desired image size
     maxTextLen = 32
 
     def __init__(self, charList, decoderType=DecoderType.BestPath,
-                 mustRestore = False, dump=False):
+                 mustRestore=False, dump=False):
         self.rnnOut3d = None
         self.gtTexts = None
         self.ctcIn3dTBC = None
@@ -80,7 +80,7 @@ class Model:
             conv = tf.nn.conv2d(input=pool, filters=kernel, padding='SAME',
                                 strides=(1, 1, 1, 1))
             conv_norm = tf.compat.v1.layers.batch_normalization(conv,
-                                                      training=self.is_train)
+                                                                training=self.is_train)
             relu = tf.nn.relu(conv_norm)
             pool = tf.nn.max_pool(relu, (1, poolVals[i][0], poolVals[i][1], 1),
                                   (1, strideVals[i][0], strideVals[i][1], 1),
@@ -168,11 +168,12 @@ class Model:
             #     corpus = file.read()
 
             # decode using the "Words" mode of word beam search.
-                #as for arg2 of WordBeamSearch:
-                    # "Words": only use dictionary, no scoring: O(1)
-                    # "NGrams": use dictionary and score beams with LM: O(log(W))
-                    # "NGramsForecast": forecast (possible) next words and apply LM to these words: O(W*log(W))
-                    # "NGramsForecastAndSample": restrict number of (possible) next words to at most 20 words: O(W)
+            # as for arg2 of WordBeamSearch:
+            # "Words": only use dictionary, no scoring: O(1)
+            # "NGrams": use dictionary and score beams with LM: O(log(W))
+            # "NGramsForecast": forecast (possible) next words and apply LM to these words: O(W*log(W))
+            # "NGramsForecastAndSample": restrict number of (possible) next words to at most 20 words: O(W)
+
             self.decoder = WordBeamSearch(50, 'Words', 0.00,
                                           corpus.encode('utf8'), chars.encode('utf8'),
                                           wordChars.encode('utf8'))
@@ -249,13 +250,17 @@ class Model:
 
         # word beam search: label strings terminated by blank
         if self.decoderType == DecoderType.WordBeamSearch:
-            blank = len(self.charList)
-            for b in range(batchSize):
-                for label in ctcOutput[b]:
+            options_list = []
+            for word in ctcOutput:
+                encodedLabelStrs = []
+                blank = len(self.charList)
+                for label in word:
                     if label == blank:
                         break
-                    encodedLabelStrs[b].append(label)
-
+                    encodedLabelStrs.append(label)
+                current_word_option = [str().join([self.charList[c] for c in encodedLabelStrs])]
+                options_list.append(current_word_option)
+            return [options_list]
         # TF decoders: label strings are contained in sparse tensor
         else:
             # ctc returns tuple, first element is SparseTensor
@@ -265,16 +270,18 @@ class Model:
             idxDict = {b: [] for b in range(batchSize)}
             for (idx, idx2d) in enumerate(decoded.indices):
                 label = decoded.values[idx]
-                print("current label is ", label )
+                print("current label is ", label)
                 batchElement = idx2d[0]  # index according to [b,t]
                 encodedLabelStrs[batchElement].append(label)
 
-        # map labels to chars for all batch elements
-        return [str().join([self.charList[c] for c in labelStr]) for labelStr in
-                encodedLabelStrs]
+            # map labels to chars for all batch elements
+            return [str().join([self.charList[c] for c in labelStr]) for labelStr in
+                    encodedLabelStrs]
 
     def inferBatch(self, batch, calcProbability=True, probabilityOfGT=False):
+
         # decode, optionally save RNN output
+
         numBatchElements = len(batch.imgs)
 
         # put tensors to be evaluated into list
@@ -293,7 +300,7 @@ class Model:
                     self.seqLen: [Model.maxTextLen] * numBatchElements,
                     self.is_train: False}
         evalRes = self.sess.run(evalList, feedDict)
-        #decoded = evalRes[0]
+        # decoded = evalRes[0]
 
         # TF decoders: decoding already done in TF graph
         if self.decoderType != DecoderType.WordBeamSearch:
@@ -303,28 +310,29 @@ class Model:
             decoded = self.decoder.compute(evalRes[0])
 
         texts = self.decoderOutputToText(decoded, numBatchElements)
-        #texts_second_best =
-        #texts_third_best =
+
         print(texts)
-        # feed RNN output and recognized text into CTC loss to compute labeling probability
         probs = None
-        if calcProbability: #TODO- from the paper- the probability of seeing the beam-labeling at the current timestep is calculated
-            sparse = self.toSparse(
-                batch.gtTexts) if probabilityOfGT else self.toSparse(texts)
-            ctcInput = evalRes[1]
-            evalList = self.lossPerElement
-            feedDict = {self.savedCtcInput: ctcInput, self.gtTexts: sparse,
-                        self.seqLen: [Model.maxTextLen] * numBatchElements,
-                        self.is_train: False}
-            lossVals = self.sess.run(evalList, feedDict)
-            probs = np.exp(-lossVals)
-            print(probs)
+        ## feed RNN output and recognized text into CTC loss to compute labeling probability
+        # probs = None
+        # if calcProbability:
+        #     sparse = self.toSparse(
+        #         batch.gtTexts) if probabilityOfGT else self.toSparse(texts)
+        #     ctcInput = evalRes[1]
+        #     evalList = self.lossPerElement
+        #     feedDict = {self.savedCtcInput: ctcInput, self.gtTexts: sparse,
+        #                 self.seqLen: [Model.maxTextLen] * numBatchElements,
+        #                 self.is_train: False}
+        #     lossVals = self.sess.run(evalList, feedDict)
+        #     probs = np.exp(-lossVals)  # from the paper: the probability of seeing the beam-
+        #     # labeling at the current timestep is calculated
+        #     print(probs)
 
-            # dump the output of the NN to CSV file(s)
-            if self.dump:
-                self.dump_nn_output(evalRes[1])
+        # dump the output of the NN to CSV file(s)
+        if self.dump:
+            self.dump_nn_output(evalRes[1])
 
-            return (texts, probs)
+        return (texts, probs)  # actually the HebHTR uses only the texts returned in this method
 
     def save(self) -> None:
         """Save model to file."""

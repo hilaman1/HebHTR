@@ -29,7 +29,7 @@ def getModel(decoder_type, mustRestore, dump):
         decoderType = DecoderType.BestPath
 
     model = Model(open(FilePaths.fnCharList, encoding="utf8").read(), decoderType,
-                  mustRestore,dump)
+                  mustRestore, dump)
     return model
 
 

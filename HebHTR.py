@@ -14,6 +14,6 @@ class HebHTR:
 
     def imgToWord(self, iterations=5, decoder_type='best_path'):
         transcribed_words = []
-        model = getModel(decoder_type=decoder_type, mustRestore = True, dump=True)
+        model = getModel(decoder_type=decoder_type, mustRestore=True, dump=True)
         transcribed_words.extend(predictWord(self.original_img, model))
         return transcribed_words
